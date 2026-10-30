@@ -70,7 +70,9 @@ class AnnotationBank:
         local=[];glob=[];cells=[];targets={a:[]for a in AXES}
         for index,flip in zip(draw['images'],draw['flips']):
             row=self.records[index];z=self._targets(index)
-            with np.load(self.feature_root/(row['public_id']+'.npz'),allow_pickle=False)as f:
+            dataset_dir='IDRiD' if row['dataset']=='IDRID' else 'DDR'
+            feature_path=self.feature_root/dataset_dir/(row['public_id']+'.npz')
+            with np.load(feature_path,allow_pickle=False)as f:
                 # Two independently extracted orientations, not a mirrored token approximation.
                 need(f['local'].shape[:2]==(2,784),'Expected both real image orientations')
                 local.append(np.asarray(f['local'][int(flip)]).copy())

@@ -14,7 +14,7 @@ Original IDRiD annotations retain their original CC BY 4.0 attribution. DDR data
 
 ## Files and matching
 
-The manifest matches each record to the SHA-256 of its original downloaded image bytes. `source_order_index` preserves the canonical 613-record order. `content_group` is a publication identifier preserving content-group isolation, without copying internal identity fields.
+Directories use the official image filename without its extension. `image_file_name` gives the complete official filename; `public_id` is its stem. SHA-256 is provided for content verification. `source_order_index` defines record ordering. `content_group` is a publication identifier preserving content-group isolation, without copying internal identity fields.
 
 Each record supplies four files:
 

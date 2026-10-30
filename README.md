@@ -1,111 +1,111 @@
 # REFINE
 
-Compositional retinal image retrieval and evidence localization with **CaSMO** supervision and **Q-SAT** training.
+Code, trained query heads and CaSMO annotations for compositional retinal image retrieval and grounding.
 
-REFINE adapts frozen visual features with a query-conditioned head. The head combines local appearance, global image context and a differentiable image-only latent geometry encoding. A sentence-conditioned decoder supplies both localization maps and image retrieval scores.
+![REFINE overview](figures/Figure_Legend.png)
 
-## Figure
+[Figure Legend (PDF)](figures/Figure_Legend.pdf)
 
-[Figure Legend](figures/Figure_Legend.pdf) illustrates CaSMO supervision, the REFINE query head and Q-SAT optimization.
+## Method
 
-## Install
+REFINE answers queries that combine a lesion category, an anatomical relation and the organization of lesion groups, such as **“far-foveal hemorrhage clusters.”** The figure shows its three components.
+
+**CaSMO: compositional supervision.** Category (C) targets identify hard exudates, hemorrhages, microaneurysms and soft exudates. Spatial (S) targets select lesions using foveal distance and disc-relative direction. Morphology (M) targets select members of geometric clusters, arcs and radial-axis groups. Combining these conditions constructs a query-specific target on the same lesion evidence. Positive, known non-target and unknown regions are represented separately.
+
+**REFINE: retrieval and grounding.** Frozen visual encoders provide global context and local features from a full-image view and sixteen tiles. A trainable head fuses these features with a ten-channel latent geometry encoding. The geometry predictor uses image features to estimate two reference points and two scales. Text-conditioned affine modulation and a shared decoder produce a query probability map. Image relevance is read from that map, coupling retrieval with localized evidence. Inference uses image features, image support and the query embedding.
+
+**Q-SAT: query-satisfaction-guided optimization.** A separate META subset guides the C/S/M supervision weights and morphology-category weights. Feedback measures relevance, regional specificity, paired near/far discrimination and group-member coverage. A one-step lookahead guides the weight update; AdamW fits the query head on CORE examples.
+
+## Installation
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
+git clone https://github.com/leeyan0612/REFINE.git
+cd REFINE
 pip install -e .
 ```
 
-Python 3.10+ and PyTorch 2.5+ are required. Use a CUDA build of PyTorch for training.
+Python 3.10+ and PyTorch 2.5+ are required. Use a CUDA build of PyTorch for GPU training.
 
-## Pretrained heads
+Frozen encoders are obtained from their authors:
 
-The `weights/` directory provides three RET-CLIP REFINE query heads. The manifest lists their dimensions and checksums. Use the author RET-CLIP visual encoder and EyeCLIP sentence encoder to construct the input features.
+- [RET-CLIP](https://github.com/sStonemason/RET-CLIP): visual features.
+- [EyeCLIP](https://github.com/Michi-3000/EyeCLIP): 512-dimensional sentence embeddings.
 
-Load a released head:
+## Data and models
 
-```python
-from refine import load_model
-model = load_model("weights/retclip_qsat_seed1901.safetensors", device="cuda")
+Annotation directories use the **official image filename without its extension**. The manifest records the complete filename, data role, reference sources and checksums.
+
+```text
+annotations/
+  IDRiD/IDRiD_53/
+  DDR/007-1774-100/
+  manifest.json
+weights/
+  retclip_qsat_seed1901.safetensors
+  retclip_qsat_seed1903.safetensors
+  retclip_qsat_seed1907.safetensors
 ```
+
+Each image directory contains `targets.npz`, `components.npz`, `members.npz` and `groups.json`. [Annotation formats and attribution](annotations/README.md) describe these fields. The dataset contains 81 IDRiD and 532 DDR source images; the CORE/META/CAL roles contain 360/91/162 images. `weights/manifest.json` lists the model dimensions and SHA-256 checksums.
+
+Feature files follow the same official image names:
+
+```text
+features/
+  IDRiD/IDRiD_53.npz
+  DDR/007-1774-100.npz
+```
+
+For each image, store two independently encoded orientations in `local [2,784,768]` and `global_features [2,512]`. Use the author encoder preprocessing. Tile features are registered by physical area overlap onto the 28×28 grid; the full view supplies global context. The EyeCLIP text bank contains `train [64,3,512]` in C4/S32/S-child8/M20 order.
+
+## Training
+
+```bash
+python -m refine.train \
+  --annotations annotations/manifest.json \
+  --feature-root features \
+  --text-bank eyeclip_text.npz \
+  --output outputs/refine \
+  --seed 1901 --steps 3000 --device cuda
+```
+
+The annotation reader selects the permitted C4/S28/M16 objectives and uses the manifest roles. Default hyperparameters are listed in `configs/retclip_qsat.json`. Use `--static` for fixed supervision weights. [Tensor interfaces](docs/data_format.md) describe the prepared-batch API.
 
 ## Inference
 
 ```bash
 python -m refine.infer \
   --weights weights/retclip_qsat_seed1901.safetensors \
-  --features example_features.npz \
+  --features query_features.npz \
   --output outputs/query_maps.npz --device cuda
 ```
 
-The feature NPZ contains:
+The input NPZ contains:
 
-| Field | Shape | Meaning |
+| Field | Shape | Description |
 |---|---|---|
-| `local` | `[B, 784, local_dim]` | Frozen, spatially registered 28×28 visual features |
-| `global_features` | `[B, global_dim]` | Frozen full-image context |
-| `text_vectors` | `[Q, 512]` | Frozen EyeCLIP sentence embeddings |
-| `support` | `[B, 256, 256]` | Image-only non-padding support |
+| `local` | `[B,784,768]` | Local visual features |
+| `global_features` | `[B,512]` | Full-image context |
+| `text_vectors` | `[Q,512]` | EyeCLIP query embeddings |
+| `support` | `[B,256,256]` | Image-only non-padding support |
 
-Use the model dimensions recorded in `weights/manifest.json`. Feature extraction uses a centered square image, one full view and sixteen non-overlapping 4×4 tile views. Tile features are mapped by physical area overlap to the common grid. Keep the authors' encoder preprocessing and text encoder version. Arbitrarily resized feature arrays are not interchangeable with these inputs.
+Outputs include sigmoid query maps, image relevance scores and latent geometry predictions.
 
-Inference produces sigmoid query heatmaps, image retrieval scores, and the latent geometry predictions. It does not consume reference masks, landmark coordinates or group membership. The two predicted reference points are latent variables; this release does not identify them as validated anatomical landmarks.
-
-## CaSMO annotations
-
-`annotations/` provides the released reference targets, query definitions and source roles. See [the annotation documentation](annotations/README.md) and the manifest for exact coverage, format, source attribution and licenses.
-
-- **C** selects hard exudates, hemorrhages, microaneurysms or soft exudates.
-- **S** applies foveal-distance and disc-relative direction conditions.
-- **M** selects members of qualifying geometric lesion groups.
-- Unknown reference coverage is retained and contributes no negative supervision.
-
-The annotations are geometric references constructed from the recorded sources. Derived spatial and morphology targets are distinguished from the underlying official lesion annotations.
-
-## Training
-
-Q-SAT uses a separate META subset to adjust C/S/M axis weights and M category weights. The neural head uses AdamW; the meta-update uses a one-step SGD preview following Auto-Lambda.
-
-```bash
-python -m refine.train --bundle prepared_bundle.json \
-  --output outputs/seed1901 --seed 1901 --steps 3000 --device cuda
+```python
+from refine import load_model
+model = load_model("weights/retclip_qsat_seed1901.safetensors", device="cuda")
 ```
 
-Alternatively, read the released annotations directly and supply the matching author-encoder feature banks:
+## Evaluation
 
-```bash
-python -m refine.train --annotations annotations/manifest.json \
-  --feature-root /path/to/frozen_features --text-bank /path/to/eyeclip_text.npz \
-  --output outputs/seed1901 --seed 1901 --steps 3000 --device cuda
+```python
+from refine.metrics import image_ap
+ap = image_ap(scores, relevance)
 ```
 
-Per-image feature files are named `<public_id>.npz` and contain both independently encoded orientations: `local [2,784,768]` and `global_features [2,512]` for the released RET-CLIP interface. The text NPZ contains `train [64,3,512]`, ordered C4, S32, S-child8, M20. The annotation reader selects only the permitted C4/S28/M16 objectives and uses seeded image, flip and wording sampling.
+Relevance labels are 1 for a match, 0 for a known non-match and −1 for unknown. AP groups exact score ties and excludes unknown references. `image_map` returns per-query AP and the strict query macro.
 
-The training entry accepts prepared tensor batches so that frozen encoder extraction can be reused. [Data format and batch construction](docs/data_format.md) describes the required tensors. Supply disjoint CORE and META content groups; the reference configuration uses CORE/META/CAL sizes 360/91/162. CAL does not update the model or controller. A static-weight control is available with `--static`.
-
-## Code layout
-
-- `refine/model.py`: query head, latent geometry, decoder and retrieval readout.
-- `refine/losses.py`: known-area C/S/M and member-coverage objectives.
-- `refine/satisfaction.py`: spatial condition and whole-group META feedback.
-- `refine/training.py`: Q-SAT controller and update rule.
-- `refine/infer.py`, `refine/train.py`: public entrypoints.
-- `refine/data.py`: released annotations, content roles and member incidence.
-- `refine/metrics.py`: image AP with grouped exact ties and unknown exclusion.
-
-## Licenses and attribution
-
-Project source code is released under the [MIT License](LICENSE). Annotation assets and trained heads have their own terms in their respective directories. Original dataset licenses remain applicable. Third-party backbone weights and source images are obtained separately.
-
-Primary method and data references:
-
-- IDRiD: https://doi.org/10.3390/data3030025
-- DDR: https://github.com/nkicsl/DDR-dataset
-- Auto-Lambda: https://github.com/lorenmt/auto-lambda
-- RET-CLIP author code and checkpoints: https://github.com/sStonemason/RET-CLIP
-- EyeCLIP author sentence encoder and checkpoints: https://github.com/Michi-3000/EyeCLIP
-
-Use the author releases corresponding to the feature specifications above; RET-CLIP supplies the visual features and EyeCLIP supplies the 512-dimensional sentence vectors.
+## Citation and license
 
 ```bibtex
 @software{refine2026,
@@ -115,3 +115,5 @@ Use the author releases corresponding to the feature specifications above; RET-C
   url = {https://github.com/leeyan0612/REFINE}
 }
 ```
+
+Code is distributed under the [MIT License](LICENSE). Model weights and derived annotations use [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/), with original data attribution retained. Please also cite [IDRiD](https://doi.org/10.3390/data3030025), [DDR](https://github.com/nkicsl/DDR-dataset), the author encoders and [Auto-Lambda](https://github.com/lorenmt/auto-lambda) as applicable.
