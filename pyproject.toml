@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "refine-retinal"
-version = "0.1.0"
+version = "0.1.1"
 description = "Compositional retinal image retrieval with CaSMO and Q-SAT"
 requires-python = ">=3.10"
 dependencies = ["torch>=2.5", "numpy>=1.26", "scipy>=1.11", "safetensors>=0.4"]

@@ -101,11 +101,11 @@ class AnnotationBank:
         return out
 
     def members(self, prepared, role):
-            """Original groups and unique native members for an exact selected role."""
+            'Construct sparse member masses and group incidence for the specified source role.'
             import numpy as np
             import torch
             need(role in ('CORE', 'META') and set(prepared['images']) <= set(self.core if role == 'CORE' else self.meta),
-                 'V35_MEMBER_TARGETS_WITHIN_EXPLICIT_ROLE')
+                 'REFINE_MEMBER_TARGETS_WITHIN_EXPLICIT_ROLE')
             gt = prepared['axes']['M']
             eligible = ((gt['truth'] == 1) & gt['complete'].bool() & (gt['weight'] > 0)
                         & (gt['P'].sum((-2, -1)) > 0)).detach().cpu().numpy()
@@ -128,17 +128,17 @@ class AnnotationBank:
                         components, native_areas = group['member_component_ids'], group['native_member_areas']
                         need(lesion == LESIONS[q // 5] and components == group['original_member_component_ids']
                              and components and len(components) == len(native_areas)
-                             and len(set(components)) == len(components), 'V35_ORIGINAL_UNCROPPED_LEGAL_GROUP')
+                             and len(set(components)) == len(components), 'REFINE_ORIGINAL_UNCROPPED_LEGAL_GROUP')
                         signature = tuple(sorted((lesion, int(x)) for x in components))
-                        need(signature not in seen_groups, 'V35_NO_DUPLICATE_LEGAL_GROUP_SET')
+                        need(signature not in seen_groups, 'REFINE_NO_DUPLICATE_LEGAL_GROUP_SET')
                         seen_groups.add(signature)
                         incidence = []
                         for component, area in zip(components, native_areas):
                             identity = lesion, int(component)
-                            need(type(area) is int and 0 < area < 2 ** 63, 'V35_EXACT_POSITIVE_NATIVE_MEMBER_AREA')
+                            need(type(area) is int and 0 < area < 2 ** 63, 'REFINE_EXACT_POSITIVE_NATIVE_MEMBER_AREA')
                             if identity in unique_members:
                                 at = unique_members[identity]
-                                need(areas[at] == area, 'V35_SHARED_MEMBER_SAME_NATIVE_AREA')
+                                need(areas[at] == area, 'REFINE_SHARED_MEMBER_SAME_NATIVE_AREA')
                                 incidence.append(at)
                                 continue
                             prefix = lesion + '__cell256_'
@@ -148,7 +148,7 @@ class AnnotationBank:
                             need(index.ndim == mass.ndim == 1 and index.shape == mass.shape and len(index) > 0
                                  and mass.dtype.kind in 'iu' and (mass > 0).all()
                                  and ((index >= 0) & (index < 65536)).all()
-                                 and int(mass.sum(dtype=np.uint64)) == area, 'V35_NATIVE_CSR_AREA_CONSERVATION')
+                                 and int(mass.sum(dtype=np.uint64)) == area, 'REFINE_NATIVE_CSR_AREA_CONSERVATION')
                             if flip:
                                 index = index // 256 * 256 + 255 - index % 256
                             at = len(areas)
@@ -167,7 +167,7 @@ class AnnotationBank:
             represented = np.zeros_like(eligible)
             if group_image:
                 represented[np.asarray(group_image), np.asarray(group_query)] = True
-            need(np.array_equal(represented, eligible), 'V35_EVERY_ELIGIBLE_POSITIVE_HAS_ORIGINAL_GROUP')
+            need(np.array_equal(represented, eligible), 'REFINE_EVERY_ELIGIBLE_POSITIVE_HAS_ORIGINAL_GROUP')
             out.update(role=role, loss_only=True, members_deduplicated_by_original_component_id=True,
                        original_group_member_association_preserved=True, group_members_uncropped=True,
                        P=gt['P'], K=gt['K'], cells=gt['cells'], truth=gt['truth'], complete=gt['complete'], weight=gt['weight'],
@@ -181,15 +181,10 @@ class AnnotationBank:
             return out
 
 class Plans:
-    """Old private RNG streams, now also legal for 1..15 unique source groups.
-
-    Repeated shuffled epochs fill the fixed batch16. Such repeated appearances
-    never increase the declared annotation/group budget or independent support.
-    At pools>=16 the original v29 image/flip/wording sequence is retained.
-    """
+    'Seeded image, flip and wording streams. Shuffled pools repeat as needed to form batches of sixteen.'
     def __init__(self, seed, pool, allowed, batch_size=16):
-        need(type(batch_size) is int and batch_size == 16, 'V35_MATCHED_BATCH16')
-        need(len(pool) > 0 and len(pool) == len(set(pool)), 'V35_NONEMPTY_UNIQUE_DECLARED_ROLE_POOL')
+        need(type(batch_size) is int and batch_size == 16, 'REFINE_MATCHED_BATCH16')
+        need(len(pool) > 0 and len(pool) == len(set(pool)), 'REFINE_NONEMPTY_UNIQUE_DECLARED_ROLE_POOL')
         self.pool, self.allowed, self.pending = list(pool), {a: list(allowed[a]) for a in AXES}, []
         self.batch_size = batch_size
         self.images = random.Random(seed * 1009)

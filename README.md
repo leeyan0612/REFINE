@@ -4,6 +4,10 @@ Compositional retinal image retrieval and evidence localization with **CaSMO** s
 
 REFINE adapts frozen visual features with a query-conditioned head. The head combines local appearance, global image context and a differentiable image-only latent geometry encoding. A sentence-conditioned decoder supplies both localization maps and image retrieval scores.
 
+## Figure
+
+[Figure Legend](figures/Figure_Legend.pdf) illustrates CaSMO supervision, the REFINE query head and Q-SAT optimization.
+
 ## Install
 
 ```bash
@@ -16,7 +20,7 @@ Python 3.10+ and PyTorch 2.5+ are required. Use a CUDA build of PyTorch for trai
 
 ## Pretrained heads
 
-The `weights/` directory contains the released RET-CLIP REFINE heads for optimization seeds **1901, 1903 and 1907**, trained for **3,000 updates** at the full **613-content-group** source budget. The weight manifest records exact file hashes and model dimensions. These are the trained REFINE adaptation heads; obtain the frozen RET-CLIP visual encoder and EyeCLIP sentence encoder from their authors.
+The `weights/` directory provides three RET-CLIP REFINE query heads. The manifest lists their dimensions and checksums. Use the author RET-CLIP visual encoder and EyeCLIP sentence encoder to construct the input features.
 
 Load a released head:
 
@@ -60,7 +64,7 @@ The annotations are geometric references constructed from the recorded sources. 
 
 ## Training
 
-The public numerical modules retain the fitting objectives and finite-difference meta-update used by the released heads. Q-SAT uses a separate META subset to adjust C/S/M axis weights and M category weights. The neural head uses AdamW; the meta-update uses a one-step SGD preview following Auto-Lambda.
+Q-SAT uses a separate META subset to adjust C/S/M axis weights and M category weights. The neural head uses AdamW; the meta-update uses a one-step SGD preview following Auto-Lambda.
 
 ```bash
 python -m refine.train --bundle prepared_bundle.json \
@@ -75,7 +79,7 @@ python -m refine.train --annotations annotations/manifest.json \
   --output outputs/seed1901 --seed 1901 --steps 3000 --device cuda
 ```
 
-Per-image feature files are named `<public_id>.npz` and contain both independently encoded orientations: `local [2,784,768]` and `global_features [2,512]` for the released RET-CLIP interface. The text NPZ contains `train [64,3,512]`, ordered C4, S32, S-child8, M20. The annotation reader selects only the permitted C4/S28/M16 objectives and preserves the original source order and image/flip/wording random streams.
+Per-image feature files are named `<public_id>.npz` and contain both independently encoded orientations: `local [2,784,768]` and `global_features [2,512]` for the released RET-CLIP interface. The text NPZ contains `train [64,3,512]`, ordered C4, S32, S-child8, M20. The annotation reader selects only the permitted C4/S28/M16 objectives and uses seeded image, flip and wording sampling.
 
 The training entry accepts prepared tensor batches so that frozen encoder extraction can be reused. [Data format and batch construction](docs/data_format.md) describes the required tensors. Supply disjoint CORE and META content groups; the reference configuration uses CORE/META/CAL sizes 360/91/162. CAL does not update the model or controller. A static-weight control is available with `--static`.
 
@@ -88,7 +92,6 @@ The training entry accepts prepared tensor batches so that frozen encoder extrac
 - `refine/infer.py`, `refine/train.py`: public entrypoints.
 - `refine/data.py`: released annotations, content roles and member incidence.
 - `refine/metrics.py`: image AP with grouped exact ties and unknown exclusion.
-- `SOURCE_PROVENANCE.json`: original numerical definitions and source hashes.
 
 ## Licenses and attribution
 

@@ -41,6 +41,6 @@ Store prepared tensor-only dictionaries using `torch.save`. They are read with `
 }
 ```
 
-Use the actual dimensions from the released model manifest. Batch paths are relative to the JSON. The CLI visits the supplied streams cyclically; prepare their original image/flip/wording order to reproduce a particular run. Merely matching the number of updates does not recreate the original exposure schedule.
+Use the dimensions in the model manifest. Batch paths are relative to the JSON, and the CLI visits the supplied streams cyclically.
 
-Released checkpoints contain the head state only, without optimizer state, private filesystem paths or training ledgers. They support inference and a new fitting run rather than exact optimizer-state resumption.
+Checkpoints contain the query-head parameters and registered buffers. Load them with `refine.load_model`.

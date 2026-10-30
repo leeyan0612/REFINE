@@ -63,9 +63,9 @@ def functional_forward(model, bank, prepared, parameters, *, direct_member=True,
         model.visual.training = previous
 
 def meta_objective(result, prepared, members, method):
-    """Same v34 new-Q function; literal BOTH_OFF uses both switches together."""
+    'Evaluate the selected query-satisfaction objective.'
     from .satisfaction import new_meta_objective, condition_slots
-    need(method in ('NEW_Q', 'NO_CONDITION', 'MEAN_GROUP', 'BOTH_OFF'), 'V35_DEFINED_QUERY_SATISFACTION_VARIANT')
+    need(method in ('NEW_Q', 'NO_CONDITION', 'MEAN_GROUP', 'BOTH_OFF'), 'REFINE_DEFINED_QUERY_SATISFACTION_VARIANT')
     condition = _clone_function(condition_slots,
         S_ALLOWED=tuple(prepared['query_indices']['S']), M_ALLOWED=tuple(prepared['query_indices']['M']))
     if method == 'BOTH_OFF':
@@ -94,13 +94,13 @@ def make_controller(device):
             if detach:
                 weights, lesion = weights.detach(), lesion.detach()
             axes = (rebuild_axes(result, prepared, lesion_weights=lesion)
-                    if 'member_terms_v31' in result else axes_with_M_weights(result, prepared, lesion))
+                    if 'member_terms' in result else axes_with_M_weights(result, prepared, lesion))
             return (axes * weights).sum(), weights, axes
 
     return Controller()
 
 def auto_update(model, bank, controller, result, core, meta, *, method, direct_member=True):
-    """Disclosed legacy SGD virtual + mixed FD; actual optimizer is AdamW."""
+    'Update supervision weights with a one-step SGD preview and a symmetric finite-difference hypergradient. AdamW updates the query head.'
     import torch
     if not bool(result['axis_defined'].all()):
         return dict(updated=False, reason='MISSING_CORE_AXIS_STATIC_FALLBACK',

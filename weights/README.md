@@ -1,10 +1,10 @@
-# Trained REFINE heads
+# Model weights
 
-The manifest binds each released tensor-only checkpoint to its optimization seed, backbone feature interface and source checkpoint hash. Models use the full source budget, fold0 C/S/M permissions and Q-SAT. All three seeds are included; no best-seed selection is used.
+Each Safetensors file contains a REFINE query head for RET-CLIP visual features and EyeCLIP sentence embeddings. `manifest.json` lists filenames, dimensions, parameter counts and SHA-256 checksums.
 
-The frozen author visual and sentence encoders are separate dependencies. These files contain only the trained REFINE head and its registered buffers.
+Use `refine.load_model(path, device)` to load a head. Obtain the frozen visual and sentence encoders from their authors.
 
-The released heads are provided for non-commercial research under CC BY-NC-SA 4.0:
+Weights are available for non-commercial research under CC BY-NC-SA 4.0:
 https://creativecommons.org/licenses/by-nc-sa/4.0/
 
-Please cite REFINE and the IDRiD/DDR sources used in training. The code MIT license does not replace the terms of these assets or third-party encoders.
+Please cite REFINE and its IDRiD/DDR data sources. Third-party encoders retain their own licenses.

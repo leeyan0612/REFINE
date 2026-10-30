@@ -65,7 +65,7 @@ def image_mean(value, valid, weight=None):
     return (value * w).sum(0) / total.clamp_min(1e-12), total > 0
 
 def dense_queries(logits, gt, positive_weights):
-    """Old native known-area BCE + positive Dice, returning each query."""
+    'Known-area binary cross-entropy and positive-target Dice loss per query.'
     import torch
     from torch.nn import functional as F
     l = logits.float()
@@ -228,12 +228,7 @@ def _mass_gt(gt, probability):
     return P, K, cells
 
 def member_terms(probability, gt, csr, m_query_indices=M_ALLOWED):
-    """Per-query equal-member coverage and complete-positive pollution.
-
-CSR is the v29 native-mass schema. The loader must deduplicate using original
-(image, query, lesion, component) before constructing CSR, never coarse-bin
-identity. It must not call the old META-only loader for CORE data.
-    """
+    'Per-query member omission and non-target response. Sparse masses are indexed by native lesion components, with deduplication by image, query, lesion and component.'
     import torch
     need(list(m_query_indices) == list(M_ALLOWED), 'EXACT_ALLOWED_M16_NO_HELD_MEMBER_TARGETS')
     p = probability.float(); b, q, h, w = p.shape
@@ -317,26 +312,21 @@ Mixed 256-bin masses remain fractional; no hard local cell label is invented.
             defined_local_directions=torch.stack(directions).sum()), pair_specification=pairs)
 
 def attach_result(result, prepared, csr, *, member_enabled=True, local_enabled=False, supervision_role='CORE'):
-    """Keep old axes/M_values interface while retaining all original components.
-
-Call only on CORE/FIT optimizer batches, including the CORE side of the
-virtual/FD recipe. META uses the original unweighted base+0.1Q target: Q
-already had member coverage/pollution in v29, so it is not added again here.
-    """
+    'Attach member coverage and non-target response to the CORE fitting objective. META feedback is evaluated separately.'
     import torch
     need(supervision_role in ('CORE', 'FIT'), 'DIRECT_LOSS_IS_NOT_THE_META_QUALITY_TARGET')
-    need('member_terms_v31' not in result, 'NO_DOUBLE_ATTACHMENT_OF_DIRECT_MEMBER_LOSS')
+    need('member_terms' not in result, 'NO_DOUBLE_ATTACHMENT_OF_DIRECT_MEMBER_LOSS')
     ids = prepared['lesion_ids']['M']
     members = member_terms(result['outputs']['M']['heatmap_probabilities'], prepared['axes']['M'], csr)
     need((~members['coverage_defined'] | result['M_defined']).all(), 'NEW_MEMBER_QUALIFICATION_SUBSET_OF_ORIGINAL_M_DEFINED_QUERIES')
     local = (local_condition_terms(result['outputs']['S']['heatmap_logits'], prepared['axes']['S'], prepared['axes']['C'])
              if local_enabled else None)
     out = dict(result, axes_original=result['axes'], M_values_original=result['M_values'],
-        member_terms_v31=members, local_terms_v31=local, member_enabled_v31=bool(member_enabled))
+        member_terms=members, local_terms=local, member_enabled=bool(member_enabled))
     counts = dict(result['counts'])
-    counts.update({'V31_'+key: value for key, value in members['counts'].items()})
+    counts.update({'REFINE_'+key: value for key, value in members['counts'].items()})
     if local is not None:
-        counts.update({'V31_'+key: value for key, value in local['counts'].items()})
+        counts.update({'REFINE_'+key: value for key, value in local['counts'].items()})
     out['counts'] = counts
     addition = .5*M_INNER*(members['coverage']+members['pollution']) if member_enabled else result['M_values']*0
     out['M_values'] = result['M_values']+addition
@@ -346,19 +336,15 @@ already had member coverage/pollution in v29, so it is not added again here.
     return out
 
 def rebuild_axes(result, prepared, *, lesion_weights=None, member_multipliers=None):
-    """CORE objective only: original C/S/M plus two shared member components.
-
-The two multipliers are class-shared; optional original M lesion weights
-still act on all M terms within their fixed /4. No hidden active-axis mean.
-    """
+    'Combine category, spatial and morphology losses with optional morphology-category and member-component multipliers.'
     import torch
-    need('member_terms_v31' in result, 'DIRECT_MEMBER_DECOMPOSITION_PRESENT')
+    need('member_terms' in result, 'DIRECT_MEMBER_DECOMPOSITION_PRESENT')
     w = result['axes'].new_ones(2) if member_multipliers is None else member_multipliers
     need(w.shape == (2,) and torch.isfinite(w).all() and (w >= .25).all()
          and torch.isclose(w.sum(), w.new_tensor(2.), atol=1e-6, rtol=0), 'TWO_SHARED_MULTIPLIERS_FLOOR_QUARTER_SUM_TWO')
-    g = result['member_terms_v31']
+    g = result['member_terms']
     value = result['M_values_original']
-    if result['member_enabled_v31']:
+    if result['member_enabled']:
         value = value+.5*M_INNER*(w[0]*g['coverage']+w[1]*g['pollution'])
     m, _ = _macro(value, result['M_defined'], prepared['lesion_ids']['M'], lesion_weights)
     return torch.stack((result['axes_original'][0], result['axes'][1], AXIS_BASE_SCALE*m))

@@ -1,10 +1,4 @@
-"""v34 unweighted META query satisfaction; pure lazy-Torch loss helpers.
-
-No model/authority/I/O/optimizer is defined here. The original CORE objective,
-seven controller logits, M_ONLY scope, true AdamW and LEGACY_SGD_FD preview
-remain caller-owned and unchanged. Geometry/member/query identifiers are loss
-targets only; no target-side field is accepted by a neural forward here.
-"""
+'Query-satisfaction losses for relevance, regional specificity, spatial conditions and group completeness.'
 import math
 
 LESIONS = ('EX', 'HE', 'MA', 'SE')
@@ -19,7 +13,7 @@ def need(value, code):
 
 
 def contract():
-    return dict(schema='V34_FIXED_QUERY_SATISFACTION_META_CONTRACT_V1',
+    return dict(schema='REFINE_FIXED_QUERY_SATISFACTION_META_CONTRACT_V1',
         member_temperature=.05, group_temperature=.05, condition_margin=.1, condition_temperature=.1,
         condition_coefficient=1., quality_coefficient=.1,
         group_aggregation='NORMALIZED_LOG_MEAN_EXP_MAX_GROUP_OF_NORMALIZED_LOG_MEAN_EXP_MIN_MEMBER',
@@ -175,18 +169,13 @@ def condition_slots(probability, prepared):
 
 
 def new_meta_objective(result, prepared, members, variant, cfg=None):
-    """Unweighted old base + .1 new Q; no learned lambda/mu/nu argument.
-
-    C stays original. S adds one condition signal to its unchanged old per-query
-    quality base. M retains its old four slots, replacing only member feedback.
-    NO_CONDITION zeros that additive signal without changing any denominator.
-    """
+    'Compute the unweighted base loss plus query-satisfaction feedback. C combines relevance and region; S adds condition discrimination; M also evaluates group coverage and non-target response.'
     import torch
     from .losses import image_relevance, soft_region
     from .losses import lesion_macro
     need(variant in VARIANTS and (cfg is None or cfg == contract()), 'EXACT_PREFIT_Q_VARIANT_AND_FIXED_CONTRACT')
     need(members.get('role') == 'META' and members.get('loss_only') is True
-         and 'member_terms_v31' not in result, 'META_ORIGINAL_UNWEIGHTED_BASE_NOT_DIRECT_CORE_MEMBER_ATTACHMENT')
+         and 'member_terms' not in result, 'META_ORIGINAL_UNWEIGHTED_BASE_NOT_DIRECT_CORE_MEMBER_ATTACHMENT')
     values, flags, counts = [],[],{}
     for axis in ('C','S','M'):
         out,gt = result['outputs'][axis],prepared['axes'][axis]
